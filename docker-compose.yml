@@ -1,0 +1,20 @@
+services:
+  db:
+    # postgis/postgis has no arm64 build, this one does
+    image: imresamu/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vidituka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vidituka}
+      POSTGRES_DB: ${POSTGRES_DB:-vidituka}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
