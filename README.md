@@ -16,7 +16,8 @@ numbers, start and end), puts them on a map and notifies people subscribed to th
 Early development.
 
 - [x] Power outages client (Elektrodistribucija JSON feed)
-- [ ] Scheduled ingestion into PostgreSQL + PostGIS
+- [x] Ingestion into PostgreSQL + PostGIS, with withdrawal detection
+- [ ] Scheduled runs
 - [ ] Parser for streets and house-number ranges
 - [ ] Geocoding (OpenStreetMap / Nominatim)
 - [ ] Map and list UI
@@ -25,8 +26,8 @@ Early development.
 
 ## Stack
 
-Python 3.12, FastAPI, httpx, Pydantic, PostgreSQL + PostGIS, uv, ruff, mypy, pytest,
-GitHub Actions. Frontend (planned): React + MapLibre.
+Python 3.12, FastAPI, httpx, Pydantic, SQLAlchemy, Alembic, PostgreSQL + PostGIS, uv, ruff,
+mypy, pytest, GitHub Actions. Frontend (planned): React + MapLibre.
 
 ## Running locally
 
@@ -34,24 +35,32 @@ Requires [uv](https://docs.astral.sh/uv/) and Docker.
 
 ```sh
 cp .env.example .env
-docker compose up -d          # PostGIS on localhost:5432
+docker compose up -d
 
 cd backend
 uv sync
-uv run vidituka fetch-power   # fetch today's planned power outages
+uv run alembic upgrade head
+uv run vidituka ingest-power
 uv run uvicorn vidituka.api.main:app --reload
 ```
+
+`vidituka fetch-power` fetches and prints the feed without touching the database.
+
+Postgres is published on port 5433 (set `POSTGRES_PORT` in `.env` to change it), so it can run
+next to other local Postgres servers.
 
 Checks (same as CI):
 
 ```sh
 cd backend
 uv run ruff check . && uv run ruff format --check .
-uv run mypy src tests
+uv run mypy src tests migrations
 uv run pytest
 ```
 
-Tests use saved responses in `backend/tests/fixtures/` and never call the live sources.
+Tests use saved responses in `backend/tests/fixtures/` and never call the live sources. Database
+tests run against the `vidituka_test` database from Docker Compose and are skipped if
+`VIDITUKA_TEST_DATABASE_URL` is not set.
 
 ## Data sources
 
