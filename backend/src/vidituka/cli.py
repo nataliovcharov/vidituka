@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 
 from vidituka.config import get_settings
+from vidituka.db import make_engine, make_session_factory
+from vidituka.ingest import ingest_power
 from vidituka.sources import elektrodistribucija as ed
 
 
@@ -16,9 +19,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch_power = commands.add_parser("fetch-power", help="fetch the power outages feed once")
     fetch_power.add_argument("--save", type=Path, help="save the raw response (for fixtures)")
 
+    commands.add_parser("ingest-power", help="fetch the power feed and store it in the database")
+
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     if args.command == "fetch-power":
         return _fetch_power(args.save)
+    if args.command == "ingest-power":
+        return _ingest_power()
     return 2
 
 
@@ -40,6 +48,21 @@ def _fetch_power(save_to: Path | None) -> int:
     )
     for outage in sorted(skopje, key=lambda o: o.start_local):
         print(f"  {outage.starts_at:%d.%m %H:%M}-{outage.ends_at:%H:%M}  {outage.place}")
+    return 0
+
+
+def _ingest_power() -> int:
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        with ed.build_client(settings.http_user_agent, settings.http_timeout_seconds) as client:
+            stats = ingest_power(make_session_factory(engine), client)
+    finally:
+        engine.dispose()
+    print(
+        f"{stats.total} outages, {stats.new} new, {stats.withdrawn} withdrawn, "
+        f"{stats.rejected} rejected"
+    )
     return 0
 
 

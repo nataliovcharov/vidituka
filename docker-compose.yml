@@ -6,10 +6,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vidituka}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vidituka}
       POSTGRES_DB: ${POSTGRES_DB:-vidituka}
+    # 5433 on the host so it doesn't clash with other local postgres servers
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/20-create-test-db.sql:/docker-entrypoint-initdb.d/20-create-test-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
