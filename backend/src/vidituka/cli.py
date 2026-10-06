@@ -9,6 +9,8 @@ from pathlib import Path
 from vidituka.config import get_settings
 from vidituka.db import make_engine, make_session_factory
 from vidituka.ingest import ingest_power
+from vidituka.parsing.evaluate import DEFAULT_LABELS, evaluate, format_report, load_labels
+from vidituka.parsing.locations import parse_locations
 from vidituka.sources import elektrodistribucija as ed
 
 
@@ -21,12 +23,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     commands.add_parser("ingest-power", help="fetch the power feed and store it in the database")
 
+    eval_parser = commands.add_parser("eval-parser", help="score the address parser on the labels")
+    eval_parser.add_argument("--split", choices=["all", "dev", "test"], default="all")
+    eval_parser.add_argument("--skopje", action="store_true", help="only Skopje records")
+    eval_parser.add_argument("--errors", action="store_true", help="list every mistake")
+    eval_parser.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     if args.command == "fetch-power":
         return _fetch_power(args.save)
     if args.command == "ingest-power":
         return _ingest_power()
+    if args.command == "eval-parser":
+        report = evaluate(parse_locations, load_labels(args.labels), args.split, args.skopje)
+        print(format_report(report, show_errors=args.errors))
+        return 0
     return 2
 
 
