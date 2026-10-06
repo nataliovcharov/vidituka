@@ -18,7 +18,8 @@ Early development.
 - [x] Power outages client (Elektrodistribucija JSON feed)
 - [x] Ingestion into PostgreSQL + PostGIS, with withdrawal detection
 - [ ] Scheduled runs
-- [ ] Parser for streets and house-number ranges
+- [x] Parser for streets, villages and house numbers (F1 0.956 on a labeled set)
+- [ ] Gazetteer of official settlement and street names
 - [ ] Geocoding (OpenStreetMap / Nominatim)
 - [ ] Map and list UI
 - [ ] Subscriptions and alerts (email, web push)
@@ -56,6 +57,13 @@ cd backend
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src tests migrations
 uv run pytest
+```
+
+Scoring the address parser against the labeled set:
+
+```sh
+uv run vidituka eval-parser
+uv run vidituka eval-parser --skopje --errors
 ```
 
 Tests use saved responses in `backend/tests/fixtures/` and never call the live sources. Database
