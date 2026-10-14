@@ -10,6 +10,8 @@ from vidituka.config import get_settings
 from vidituka.db import make_engine, make_session_factory
 from vidituka.gazetteer.osm import extract
 from vidituka.gazetteer.store import replace_gazetteer
+from vidituka.geocoding.evaluate import evaluate_matching, format_match_report, load_cases
+from vidituka.geocoding.index import DEFAULT_SNAPSHOT, Snapshot, build_index, read_snapshot
 from vidituka.ingest import ingest_power
 from vidituka.parsing.evaluate import DEFAULT_LABELS, evaluate, format_report, load_labels
 from vidituka.parsing.locations import parse_locations
@@ -34,6 +36,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     eval_parser.add_argument("--errors", action="store_true", help="list every mistake")
     eval_parser.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
 
+    eval_matcher = commands.add_parser(
+        "eval-matcher", help="score matching labeled locations to the gazetteer"
+    )
+    eval_matcher.add_argument("--split", choices=["all", "dev", "test"], default="all")
+    eval_matcher.add_argument("--skopje", action="store_true", help="only Skopje records")
+    eval_matcher.add_argument("--errors", action="store_true", help="list every mistake")
+    eval_matcher.add_argument("--labels", type=Path, default=DEFAULT_LABELS)
+    eval_matcher.add_argument(
+        "--db", action="store_true", help="use the loaded gazetteer instead of the snapshot"
+    )
+
+    snapshot = commands.add_parser(
+        "save-gazetteer-snapshot", help="save the gazetteer's names for the matcher tests"
+    )
+    snapshot.add_argument("path", type=Path, nargs="?", default=DEFAULT_SNAPSHOT)
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     if args.command == "fetch-power":
@@ -46,7 +64,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = evaluate(parse_locations, load_labels(args.labels), args.split, args.skopje)
         print(format_report(report, show_errors=args.errors))
         return 0
+    if args.command == "eval-matcher":
+        index = build_index(_read_snapshot() if args.db else Snapshot.load(DEFAULT_SNAPSHOT))
+        match_report = evaluate_matching(index, load_cases(args.labels), args.split, args.skopje)
+        print(format_match_report(match_report, show_errors=args.errors))
+        return 0
+    if args.command == "save-gazetteer-snapshot":
+        data = _read_snapshot()
+        data.save(args.path)
+        print(
+            f"saved {len(data.areas)} areas, {len(data.places)} places, {len(data.streets)} streets"
+        )
+        return 0
     return 2
+
+
+def _read_snapshot() -> Snapshot:
+    engine = make_engine(get_settings().database_url)
+    try:
+        with make_session_factory(engine)() as session:
+            return read_snapshot(session)
+    finally:
+        engine.dispose()
 
 
 def _fetch_power(save_to: Path | None) -> int:

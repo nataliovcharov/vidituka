@@ -20,7 +20,7 @@ Early development.
 - [ ] Scheduled runs
 - [x] Parser for streets, villages and house numbers (F1 0.956 on a labeled set)
 - [x] Gazetteer: municipalities, settlements and streets from OpenStreetMap, in PostGIS
-- [ ] Matching parsed names to the gazetteer
+- [x] Matching parsed names to the gazetteer (precision 1.00, recall 0.97 on the labeled set)
 - [ ] A point or line on the map for each outage location
 - [ ] Map and list UI
 - [ ] Subscriptions and alerts (email, web push)
@@ -28,8 +28,8 @@ Early development.
 
 ## Stack
 
-Python 3.12, FastAPI, httpx, Pydantic, SQLAlchemy, Alembic, PostgreSQL + PostGIS, uv, ruff,
-mypy, pytest, GitHub Actions. Frontend (planned): React + MapLibre.
+Python 3.12, FastAPI, httpx, Pydantic, SQLAlchemy, Alembic, PostgreSQL + PostGIS, rapidfuzz, uv,
+ruff, mypy, pytest, GitHub Actions. Frontend (planned): React + MapLibre.
 
 ## Running locally
 
@@ -74,6 +74,17 @@ Scoring the address parser against the labeled set:
 uv run vidituka eval-parser
 uv run vidituka eval-parser --skopje --errors
 ```
+
+Scoring the matching of those names to the gazetteer (uses a saved snapshot of the gazetteer's
+names, or the loaded one with `--db`):
+
+```sh
+uv run vidituka eval-matcher
+uv run vidituka eval-matcher --skopje --errors
+```
+
+After loading a new OSM extract, run `uv run vidituka save-gazetteer-snapshot` to refresh the
+snapshot the tests use.
 
 Tests use saved responses and a small hand-made map in `backend/tests/fixtures/` and never call
 the live sources or need the real OSM extract. Database
