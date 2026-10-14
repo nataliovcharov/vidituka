@@ -67,3 +67,20 @@ Leave it out when the street is in the town from `nasMesto`.
 Set `"uncertain": true` with a short `note` when the right answer is not clear from the text.
 These are the first ones to check in review. Labels still uncertain after review are left
 out of scoring.
+
+## match
+
+The gazetteer feature a location refers to, for scoring the matcher (ADR 0005):
+
+```json
+"match": {"name": "Груица Војвода", "municipality": ["Бутел"]}
+```
+
+- `name` is the name as OpenStreetMap writes it, `municipality` without "Општина". List more
+  than one municipality when a street crosses a border and either part is right.
+- `null` when OpenStreetMap doesn't have it. Check other spellings, old names and the
+  municipalities next door before deciding that.
+- `{"uncertain": true}` when it can't be told which of several features is meant. Left out of
+  scoring.
+- A village in the next municipality is fine when the power district covers it
+  (`ПРИЛЕП` → `Обршани`, Krivogaštani).
