@@ -1,7 +1,8 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from alembic.environment import IncludeNameFn, NameFilterParentNames, NameFilterType
+from sqlalchemy import Connection, engine_from_config, pool, text
 
 from vidituka.config import get_settings
 from vidituka.models import Base
@@ -17,19 +18,35 @@ if not config.get_main_option("sqlalchemy.url"):
 
 target_metadata = Base.metadata
 
-# tables owned by extensions, not by us
-IGNORED_TABLES = {"spatial_ref_sys"}
 
+def skip_extension_tables(connection: Connection) -> IncludeNameFn:
+    # postgis and the image's extra extensions (tiger geocoder, topology) bring their own tables
+    owned: set[str] = set(
+        connection.execute(
+            text(
+                "SELECT c.relname FROM pg_class c"
+                " JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'e'"
+                " WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')"
+            )
+        ).scalars()
+    )
 
-def include_name(name: str | None, type_: str, parent_names: object) -> bool:
-    return not (type_ == "table" and name in IGNORED_TABLES)
+    def include_name(
+        name: str | None, type_: NameFilterType, parent_names: NameFilterParentNames
+    ) -> bool:
+        if type_ == "table":
+            return name not in owned
+        if type_ in {"index", "unique_constraint", "foreign_key_constraint", "column"}:
+            return parent_names.get("table_name") not in owned
+        return True
+
+    return include_name
 
 
 def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
-        include_name=include_name,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -45,7 +62,9 @@ def run_migrations_online() -> None:
     )
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata, include_name=include_name
+            connection=connection,
+            target_metadata=target_metadata,
+            include_name=skip_extension_tables(connection),
         )
         with context.begin_transaction():
             context.run_migrations()
