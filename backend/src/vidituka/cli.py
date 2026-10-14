@@ -13,6 +13,7 @@ from vidituka.gazetteer.store import replace_gazetteer
 from vidituka.geocoding.evaluate import evaluate_matching, format_match_report, load_cases
 from vidituka.geocoding.index import DEFAULT_SNAPSHOT, Snapshot, build_index, read_snapshot
 from vidituka.ingest import ingest_power
+from vidituka.locate import LocateStats, locate_pending
 from vidituka.parsing.evaluate import DEFAULT_LABELS, evaluate, format_report, load_labels
 from vidituka.parsing.locations import parse_locations
 from vidituka.sources import elektrodistribucija as ed
@@ -25,7 +26,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch_power = commands.add_parser("fetch-power", help="fetch the power outages feed once")
     fetch_power.add_argument("--save", type=Path, help="save the raw response (for fixtures)")
 
-    commands.add_parser("ingest-power", help="fetch the power feed and store it in the database")
+    commands.add_parser(
+        "ingest-power", help="fetch the power feed, store it and locate new outages"
+    )
+
+    locate = commands.add_parser("locate", help="work out where stored outages are")
+    locate.add_argument(
+        "--all", action="store_true", help="redo every outage, not only the ones that need it"
+    )
 
     load_osm = commands.add_parser("load-osm", help="load places and streets from an OSM extract")
     load_osm.add_argument("path", type=Path, help="e.g. data/macedonia-latest.osm.pbf")
@@ -58,6 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _fetch_power(args.save)
     if args.command == "ingest-power":
         return _ingest_power()
+    if args.command == "locate":
+        return _locate(redo_all=args.all)
     if args.command == "load-osm":
         return _load_osm(args.path)
     if args.command == "eval-parser":
@@ -113,15 +123,34 @@ def _ingest_power() -> int:
     settings = get_settings()
     engine = make_engine(settings.database_url)
     try:
+        session_factory = make_session_factory(engine)
         with ed.build_client(settings.http_user_agent, settings.http_timeout_seconds) as client:
-            stats = ingest_power(make_session_factory(engine), client)
+            stats = ingest_power(session_factory, client)
+        print(
+            f"{stats.total} outages, {stats.new} new, {stats.withdrawn} withdrawn, "
+            f"{stats.rejected} rejected"
+        )
+        # the outages are stored either way; locating can be retried with `vidituka locate`
+        _print_locate(locate_pending(session_factory))
     finally:
         engine.dispose()
-    print(
-        f"{stats.total} outages, {stats.new} new, {stats.withdrawn} withdrawn, "
-        f"{stats.rejected} rejected"
-    )
     return 0
+
+
+def _locate(redo_all: bool) -> int:
+    engine = make_engine(get_settings().database_url)
+    try:
+        _print_locate(locate_pending(make_session_factory(engine), redo_all=redo_all))
+    finally:
+        engine.dispose()
+    return 0
+
+
+def _print_locate(stats: LocateStats) -> None:
+    print(
+        f"located {stats.outages} outages: {stats.locations} locations, {stats.matched} matched, "
+        f"{stats.approximate} approximate, {stats.unplaced} not placed"
+    )
 
 
 def _load_osm(path: Path) -> int:
