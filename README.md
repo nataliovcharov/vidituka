@@ -21,7 +21,7 @@ Early development.
 - [x] Parser for streets, villages and house numbers (F1 0.956 on a labeled set)
 - [x] Gazetteer: municipalities, settlements and streets from OpenStreetMap, in PostGIS
 - [x] Matching parsed names to the gazetteer (precision 1.00, recall 0.97 on the labeled set)
-- [ ] A point or line on the map for each outage location
+- [x] A line or area for each outage location, stored with the outage
 - [ ] Map and list UI
 - [ ] Subscriptions and alerts (email, web push)
 - [ ] Water outages (Vodovod Skopje)
@@ -51,6 +51,8 @@ uv run uvicorn vidituka.api.main:app --reload
 ```
 
 `vidituka fetch-power` fetches and prints the feed without touching the database.
+`ingest-power` also works out where new outages are; `vidituka locate` does it for outages
+stored earlier (add `--all` to redo every one).
 
 `load-osm` reads the OpenStreetMap extract (about 30 MB, takes ~30 s) into the `admin_areas`,
 `places` and `streets` tables, replacing what was there. Re-download and re-run it to refresh.

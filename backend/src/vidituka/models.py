@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from geoalchemy2 import Geometry, WKBElement
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -17,8 +19,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # stable constraint names so migrations stay predictable
 NAMING_CONVENTION = {
@@ -78,6 +80,51 @@ class Outage(Base):
     last_seen_run_id: Mapped[int] = mapped_column(ForeignKey("fetch_runs.id"))
     # set when an upcoming outage drops out of the feed (cancelled or rescheduled)
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # when its locations were last worked out, and by which version of the rules
+    located_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    locator_version: Mapped[int | None] = mapped_column(Integer)
+
+    locations: Mapped[list[OutageLocation]] = relationship(
+        back_populates="outage", order_by="OutageLocation.position", passive_deletes=True
+    )
+
+
+class OutageLocation(Base):
+    """One street, village or neighbourhood an outage names, and where it is.
+
+    The geometry is a copy, not a link to the gazetteer: reloading OSM replaces those rows,
+    and an old outage should still be drawable.
+    """
+
+    __tablename__ = "outage_locations"
+    __table_args__ = (
+        UniqueConstraint("outage_id", "position"),
+        CheckConstraint(
+            "kind IN ('street', 'settlement', 'neighborhood', 'municipality')", name="kind"
+        ),
+        CheckConstraint("match_method IN ('exact', 'abbreviation', 'fuzzy')", name="match_method"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    outage_id: Mapped[int] = mapped_column(ForeignKey("outages.id", ondelete="CASCADE"))
+    position: Mapped[int] = mapped_column(SmallInteger)  # order in the text
+    kind: Mapped[str] = mapped_column(String(20))
+    name: Mapped[str] = mapped_column(Text)  # as the parser read it
+    partial: Mapped[bool] = mapped_column(Boolean)
+    # house numbers: "42" or {"from": "10", "to": "30"}
+    numbers: Mapped[list[Any]] = mapped_column(JSONB, server_default="[]")
+    within: Mapped[str | None] = mapped_column(Text)  # a village named in the text
+
+    # what it matched in the gazetteer, if anything
+    matched_name: Mapped[str | None] = mapped_column(Text)
+    match_method: Mapped[str | None] = mapped_column(String(20))
+    # found in a neighbouring municipality rather than the outage's own
+    match_widened: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    # true when geom is only the village or municipality around it
+    approximate: Mapped[bool] = mapped_column(Boolean)
+    geom: Mapped[WKBElement | None] = mapped_column(Geometry("GEOMETRY", srid=4326))
+
+    outage: Mapped[Outage] = relationship(back_populates="locations")
 
 
 # reference data loaded from OpenStreetMap (see docs/adr/0004-gazetteer.md)
