@@ -30,6 +30,8 @@ def skip_extension_tables(connection: Connection) -> IncludeNameFn:
             )
         ).scalars()
     )
+    # end the read so alembic opens and commits its own transaction
+    connection.rollback()
 
     def include_name(
         name: str | None, type_: NameFilterType, parent_names: NameFilterParentNames
