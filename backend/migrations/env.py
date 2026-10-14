@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from alembic.environment import IncludeNameFn, NameFilterParentNames, NameFilterType
+from geoalchemy2 import alembic_helpers
 from sqlalchemy import Connection, engine_from_config, pool, text
 
 from vidituka.config import get_settings
@@ -49,6 +50,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=config.get_main_option("sqlalchemy.url"),
         target_metadata=target_metadata,
+        render_item=alembic_helpers.render_item,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -67,6 +69,10 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             include_name=skip_extension_tables(connection),
+            # spatial columns and their indexes
+            include_object=alembic_helpers.include_object,
+            process_revision_directives=alembic_helpers.writer,
+            render_item=alembic_helpers.render_item,
         )
         with context.begin_transaction():
             context.run_migrations()

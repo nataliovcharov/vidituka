@@ -19,8 +19,9 @@ Early development.
 - [x] Ingestion into PostgreSQL + PostGIS, with withdrawal detection
 - [ ] Scheduled runs
 - [x] Parser for streets, villages and house numbers (F1 0.956 on a labeled set)
-- [ ] Gazetteer of official settlement and street names
-- [ ] Geocoding (OpenStreetMap / Nominatim)
+- [x] Gazetteer: municipalities, settlements and streets from OpenStreetMap, in PostGIS
+- [ ] Matching parsed names to the gazetteer
+- [ ] A point or line on the map for each outage location
 - [ ] Map and list UI
 - [ ] Subscriptions and alerts (email, web push)
 - [ ] Water outages (Vodovod Skopje)
@@ -36,16 +37,24 @@ Requires [uv](https://docs.astral.sh/uv/) and Docker.
 
 ```sh
 cp .env.example .env
-docker compose up -d
+docker compose up -d --wait
+
+mkdir -p data
+curl -L -o data/macedonia-latest.osm.pbf https://download.geofabrik.de/europe/macedonia-latest.osm.pbf
 
 cd backend
 uv sync
 uv run alembic upgrade head
+uv run vidituka load-osm ../data/macedonia-latest.osm.pbf
 uv run vidituka ingest-power
 uv run uvicorn vidituka.api.main:app --reload
 ```
 
 `vidituka fetch-power` fetches and prints the feed without touching the database.
+
+`load-osm` reads the OpenStreetMap extract (about 30 MB, takes ~30 s) into the `admin_areas`,
+`places` and `streets` tables, replacing what was there. Re-download and re-run it to refresh.
+`data/` is git-ignored.
 
 Postgres is published on port 5433 (set `POSTGRES_PORT` in `.env` to change it), so it can run
 next to other local Postgres servers.
@@ -66,7 +75,8 @@ uv run vidituka eval-parser
 uv run vidituka eval-parser --skopje --errors
 ```
 
-Tests use saved responses in `backend/tests/fixtures/` and never call the live sources. Database
+Tests use saved responses and a small hand-made map in `backend/tests/fixtures/` and never call
+the live sources or need the real OSM extract. Database
 tests run against the `vidituka_test` database from Docker Compose and are skipped if
 `VIDITUKA_TEST_DATABASE_URL` is not set.
 
@@ -74,8 +84,9 @@ tests run against the `vidituka_test` database from Docker Compose and are skipp
 
 - [Elektrodistribucija](https://elektrodistribucija.mk/Grid/OutagesMap.aspx), planned power outages
 - [Vodovod i kanalizacija Skopje](https://www.vodovod-skopje.com.mk/mk-MK/article/INFORMACIIIZAPREKINNAVODOSNABDUVANjEIDEFEKTI_1), water interruptions (planned)
+- [OpenStreetMap](https://www.openstreetmap.org/copyright) via [Geofabrik](https://download.geofabrik.de/europe/macedonia.html), municipalities, settlements and streets. Map data © OpenStreetMap contributors, available under the [ODbL](https://opendatacommons.org/licenses/odbl/).
 
 Sources are polled at most every 30 minutes with an identifying User-Agent. Only extracted facts
 are stored, with a link back to the original notice. Decisions are recorded in [docs/adr](docs/adr).
 
-This is an independent project and is not affiliated with either utility.
+This is an independent project and is not affiliated with either utility or with OpenStreetMap.

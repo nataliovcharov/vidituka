@@ -11,6 +11,9 @@ dist/
 build/
 *.egg-info/
 
+# Downloaded data (see README)
+data/
+
 # Node (frontend, later)
 node_modules/
 

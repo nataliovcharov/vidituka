@@ -8,6 +8,8 @@ from pathlib import Path
 
 from vidituka.config import get_settings
 from vidituka.db import make_engine, make_session_factory
+from vidituka.gazetteer.osm import extract
+from vidituka.gazetteer.store import replace_gazetteer
 from vidituka.ingest import ingest_power
 from vidituka.parsing.evaluate import DEFAULT_LABELS, evaluate, format_report, load_labels
 from vidituka.parsing.locations import parse_locations
@@ -23,6 +25,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     commands.add_parser("ingest-power", help="fetch the power feed and store it in the database")
 
+    load_osm = commands.add_parser("load-osm", help="load places and streets from an OSM extract")
+    load_osm.add_argument("path", type=Path, help="e.g. data/macedonia-latest.osm.pbf")
+
     eval_parser = commands.add_parser("eval-parser", help="score the address parser on the labels")
     eval_parser.add_argument("--split", choices=["all", "dev", "test"], default="all")
     eval_parser.add_argument("--skopje", action="store_true", help="only Skopje records")
@@ -35,6 +40,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _fetch_power(args.save)
     if args.command == "ingest-power":
         return _ingest_power()
+    if args.command == "load-osm":
+        return _load_osm(args.path)
     if args.command == "eval-parser":
         report = evaluate(parse_locations, load_labels(args.labels), args.split, args.skopje)
         print(format_report(report, show_errors=args.errors))
@@ -74,6 +81,24 @@ def _ingest_power() -> int:
     print(
         f"{stats.total} outages, {stats.new} new, {stats.withdrawn} withdrawn, "
         f"{stats.rejected} rejected"
+    )
+    return 0
+
+
+def _load_osm(path: Path) -> int:
+    data = extract(path)
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        with make_session_factory(engine).begin() as session:
+            stats = replace_gazetteer(session, data, source=path.name)
+    finally:
+        engine.dispose()
+    print(
+        f"loaded {stats.areas} areas, {stats.places} places, {stats.streets} streets "
+        f"(OSM data from {data.data_timestamp:%Y-%m-%d})"
+        if data.data_timestamp
+        else f"loaded {stats.areas} areas, {stats.places} places, {stats.streets} streets"
     )
     return 0
 
